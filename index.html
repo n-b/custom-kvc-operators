@@ -61,7 +61,13 @@ layout: true
 `valueForKey:@"key"` appelle la méthode "key", si elle existe.
 <!-- Elle essaye ensuite d'autres méthodes, avec underscode, etc, puis un accès direct aux ivars. -->
 
+--
+
 	[[@"hello"] uppercaseString]
+		// -> @"HELLO"
+
+&nbsp;
+
 	[@"hello" valueForKey:@"uppercaseString"]
 		// -> @"HELLO"
 
@@ -101,11 +107,11 @@ layout:true
 
 ---
 
-Un composant qui démarre par "@" permet d'utiliser une propriété de l'*objet* collection.
+Un composant de keypath qui démarre par "@" permet d'utiliser une propriété de l'*objet* collection.
 
 --
 
-**Non documenté !**
+**Comportement non documenté !**
 
 --
 
@@ -115,6 +121,8 @@ Un composant qui démarre par "@" permet d'utiliser une propriété de l'*objet*
 		// -> 2
 	[@[@"a",@"b"] valueForKey:@"@count"]
 		// -> @(2)
+
+&nbsp;
 
 	[@[@"a",@"b"] valueForKey:@"@lastObject"]
 		// -> @"b"
@@ -290,7 +298,7 @@ Utilisent une **collection de collections**.
 	               @{@"color": @"blue"},
 	               @{@"color": @"green"}];
 				   
-	@[pencils, markers] valueForKeyPath:@"@unionOfArrays.color"]
+	[@[pencils, markers] valueForKeyPath:@"@unionOfArrays.color"]
 		// ->  @[@"blue", @"red", @"blue", @"purple", @"blue", @"green"]
 
 ---
@@ -304,7 +312,7 @@ Utilisent une **collection de collections**.
 	               @{@"color": @"blue"},
 	               @{@"color": @"green"}];
 				   
-	@[pencils, markers] valueForKeyPath:@"@unionOfArrays.color"]
+	[@[pencils, markers] valueForKeyPath:@"@distinctUnionOfArrays.color"]
 		// ->  @[@"green", @"red", @"blue", @"purple"]
 		
 <!-- Et au passage, on perd l'ordre. @distinctUnionOfSets fonctionne de la même façon, et NSOrderedSet ne supporte pas ces opérateurs. -->
@@ -317,11 +325,11 @@ layout:true
 
 --
 
-> ***Important:*** *This operator raises an exception if any of the leaf objects is nil*
+> ***Important:*** *This operator raises an exception if any of the leaf objects is nil.*
 
 --
 
-> *"This class is not key value coding-compliant for the key "key"*
+> *This class is not key value coding-compliant for the key "key"*
 
 --
 
@@ -336,7 +344,7 @@ layout:true
 ---
 **`@unionOfPresentObjects`**
 
-Similaire à @unionOfObjects, mais ignore 
+Similaire à @unionOfObjects, mais ignore :
 
 * les objets incompatibles,
 * les valeurs nil,
@@ -393,6 +401,12 @@ La partie de droite du keyPath peut servir à autre chose :
 
 	[arrayOfMiles valueForKeyPath:@"@filterWithRegexp.[Mm]ozilla"]
 	
+--
+
+**`@resizedTo`**
+
+	[iamges valueForKeyPath:@"@resizedTo.{128,128}"]
+	
 	
 
 ---
@@ -401,5 +415,10 @@ layout:false
 
 * [Apple docs](http://developer.apple.com/library/ios/#documentation/cocoa/conceptual/KeyValueCoding/Articles/CollectionOperators.html)
 * [NSHipster](http://nshipster.com/kvc-collection-operators/)
+
+&nbsp;
+
+.footnote[Nicolas Bouilleaud - 2012<br>
+[Follow me on Twitter](http://twitter.com/_nb)]
 
 </textarea><div id="slideshow"></div></body></html>

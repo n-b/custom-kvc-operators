@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Objective-C</title>
+    <title>KVC Collection Operators</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
     <script src="https://github.com/downloads/gnab/remark/remark-0.4.2.min.js" type="text/javascript">
 	{ 
@@ -26,6 +26,9 @@
 		color: #a86;
 		text-decoration: none;
 	}
+	code {
+		word-wrap: break-word;
+	}
 	.position {
 		visibility: hidden;
 	}
@@ -45,914 +48,358 @@ class: center, middle
 # KVC Collection Operators
 #### `@distinctUnionOfHacks`
 
-.footnote[[github.com/n-b/objc-features](http://github.com/n-b/custom-kvc-operators)]
+.footnote[[n-b.github.com/custom-kvc-operators](http://github.com/n-b/custom-kvc-operators)]
 
---
-
-
----
-class: center
-
-Documentation officielle :
-
-	[object valueForKeyPath:@"keypathToCollection.@collectionOperator.keypathToProperty"]
-
-
-revient au même que :
-
-	[[object valueForKeyPath:@"keyPathToCollection"] valueForKeyPath:@"@collectionOperator.keypathToProperty"]
-	
-et plus clairement, peut s'écrire :
-
-	[[[object valueForKeyPath:@"keyPathToCollection"] valueForKeyPath:@"keypathToProperty"] performTheCollectionOperator]
-
-Par exemple :
-
-	[company valueForKeyPath:@"employees.@avg.salary"]
-	
-	[[company valueForKeyPath:@"employees.salary"] average] // (implement -[NSArray average])
 	
 
 ---
+layout: true
 # Key-Value Coding Basics
 
-`valueForKey` first calls the selector of the same name, if it exists.
-<!-- NSObject implementation may fallback to direct ivar access.-->
+---
+
+`valueForKey:@"key"` appelle la méthode "key", si elle existe.
+<!-- Elle essaye ensuite d'autres méthodes, avec underscode, etc, puis un accès direct aux ivars. -->
 
 	[[@"hello"] uppercaseString]
-	[@"hello" valueForKey:@"uppercaseString"] // -> @"HELLO"
-
-Collections return a collection by calling `valueForKey:` for each object.
-
-	[@[@"hello",@"goodbye"] valueForKey:@"uppercaseString"] // -> @[@"HELLO",@"GOODBYE"]
-
-"self" is a method on NSObject.
-
-	[@"hello" valueForKey:@"self"] // -> @"hello"
-
+	[@"hello" valueForKey:@"uppercaseString"]
+		// -> @"HELLO"
 
 ---
+Les Collections retournent une collection en appelant `valueForKey:` sur chaque objet.
+
+	[@[@"hello",@"goodbye"] valueForKey:@"uppercaseString"]
+		// -> @[@"HELLO",@"GOODBYE"]
+
+---
+`-[NSObject self]` est une méthode comme les autres.
+
+	[@"hello" valueForKey:@"self"] 
+		// -> @"hello"
+
+---
+layout: true
 # KVC Paths
 
-Paths are "." separated. Evaluated left to right.
+---
+
+Les composants sont séparés par ".", et évalués de gauche à droite.
 	
 	[object valueForKeyPath:@"a.b.c"]
+
+--
+revient au même que :
+
 	[[[object valueForKey:@"a"] valueForKey:@"b"] valueForKey:@"c"]
 
 <!--Works with collections : if valueForKey:@"a" returns a collection, valueForKey:@"b" is called on each object of that collection, no problem. -->
 
+
 ---
-# Collections Operators
+layout:true
+# Collections “Operators”
 
-<!-- That's NSArray and NSSet. NSOrderedSet has been forgotten, which led me to this. -->
+---
 
-"@" in a path means to use the collection object itself instead of its content.
+Un composant qui démarre par "@" permet d'utiliser une propriété de l'*objet* collection.
+
+--
+
+**Non documenté !**
+
+--
 
 <!-- The `@count` "operator" is just the `-[NSArray count]` method. -->
 
-	[@[@"a",@"b"] count]				 // -> 2
-	[@[@"a",@"b"] valueForKey:@"@count"] // -> @(2)
+	[@[@"a",@"b"] count]
+		// -> 2
+	[@[@"a",@"b"] valueForKey:@"@count"]
+		// -> @(2)
 
-	[@[@"a",@"b"] valueForKey:@"@lastObject"] // -> @"b"
+	[@[@"a",@"b"] valueForKey:@"@lastObject"]
+		// -> @"b"
 
 ---
-# Collections Operators
 
 <!-- Let's try another method : -->
 
-	@implementation NSArray (Sorted)
+	@implementation NSArray (Reverse)
 	- (instancetype) reverse
 	{
 	    return [[self reverseObjectEnumerator] allObjects];
 	}
 	@end
 
-	[array valueForKey:@"@reverse"] // -> @[@"b",@"a"]
+&nbsp;
+
+	[array valueForKey:@"@reverse"]
+		// -> @[@"b",@"a"]
 
 <!-- custom operator ! -->
 <!-- moreover, returns a collection, not an object -->
 
 ---
-# Collections Operators (the real ones)
+layout:true
+# “Simple” Collections Operators
 
-@avg, @sum, @min, @max
+---
+
+L'exemple de la documentation :
+
+	[object valueForKeyPath:
+	    @"keypathToCollection.@collectionOperator.keypathToProperty"]
+
+--
+revient au même que :
+
+	[[object valueForKeyPath:@"keyPathToCollection"] 
+	 valueForKeyPath:@"@collectionOperator.keypathToProperty"]
+
+--
+Etape par étape :
+
+	[[[object valueForKeyPath:@"keyPathToCollection"] 
+	  valueForKeyPath:@"keypathToProperty"]
+	 performTheCollectionOperator]
+
+---
+
+Opérateurs “simples” : **@avg, @sum, @min, @max**
 
 <!-- Take a parameter (a key path) on which to operate. -->
 	
-	[employees valueForKeyPath:@"@avg.salary"]
+	[company valueForKeyPath:@"employees.@avg.salary"]
 	
-	[[employees valueForKeyPath:@"salary"] average] // Come on, just implement -[NSArray average].
-	
-The @avg implementation :
+	[[company valueForKeyPath:@"employees.salary"] average]
+		 // (just implement -[NSArray average])
 
-1. calls `[self valueForKeyPath:@"<end_of_keypath>"]`
-	The result must be a collection of NSNumbers.
-2. computes the average and returns it, boxed in an NSNumber.
+--
 
-Using self :
 
-	[[@0,@2,@8,@10] valueForKeyPath:@"@avg.self"] // -> @5
+Une implémentation de @avg : 
 
-Using @self :
+1. appelle `[self valueForKeyPath:@"<end_of_keypath>"]` <br>Le résultat ***doit*** être une collection de NSNumbers.
+--
+
+2. calcule la moyenne et la retourne sous forme de NSNumber.
+
+<!-- Les keypaths pour les collections operators sont évalués de droite à gauche. -->
+
+---
+
+On peut utiliser `self` :
+
+	[[@0,@2,@8,@10] valueForKeyPath:@"@avg.self"]
+		// -> @5
+
+--
+Ou même `@self` :
 <!-- Remember, the result of valueForKeyPath:@"<end_of_keypath>" must be a collection of NSNumbers. -->
 
 	[array valueForKeyPath:@"@avg.@self"]
 
 ---
+layout:true
 # Custom Collections Operators
 
+---
+
+--
+
 <!-- Merci à Nicolas Bachschmidt -->
+<!-- Le type de retour est libre -->
 
 	- (id) _<operator>ForKeyPath:(NSString*)keyPath
-	
-	// @standardDeviation
+
+**Non documenté !**
+
+---
+
+
+`@standardDeviation`
 	
 	- (NSNumber*) _standardDeviationForKeyPath:(NSString*)keyPath
 
-	[@[@10, @20] valueForKeyPath:@"@avg.self"]					// -> @15
-	[@[@10, @20] valueForKeyPath:@"@standardDeviation.self"]	// -> @5
-
-	// @differential
-	
-	- (NSArray*) _differentialForKeyPath:(NSString*)keyPath
-	
-* -> 
-@avg, @sum, @min, @max : Simple "KeyPath" collection operator, system, returns an object
-@standardDeviation : Simple "KeyPath" collection operator, custom, returns an object.
-@differential : Simple "Keypath" collection operator, custom, returns a collection.
-
-
-	
-@distinctUnionOfObjects
-
----
-class: center, middle
-
-# NeXT
-
-<!--
- * Next licences objc from Stepstone,
- * Buys Objective-C rights in 1995
- 
- Début des années 90, le paysage ObjC est très différent de 2012.
- -->
-
-*“How much does Stepstone charge for the PC version of Obj-C&nbsp;?<br>And, does it run on a 286&nbsp;?”*
-
-*comp.sys.next.programmer, 1992*
-
-<!--
- * NeXTStep n'est pas la seule implémentation ObjC à l'époque, il y a aussi GnuStep.
- * NExtStep Enterprise tourne sur d'autres archis, y compris sur NT.
- -->
-
----
-layout: true
-## NeXT
-
----
-#### Style
-
-La plupart des méthodes retournent `self`.
-<!--
- Le style évolue aussi, la plupart des méthodes retourne "self" au lieu de "void".
- -->
-
-
-	@interface SomeClass
-
-	- (id) doThis;
-	- (id) doThat;
-
-	@end
-
-	...
-	
-	[[someObject doThis] doThat];
-
----
-#### Style
-
-id est le type par défaut.
-<!-- 
- La raison pour laquelle les méthodes retournent le receiver est que le type implicite des méthodes est id.
- (id) est *encore* le type par défaut des méthodes et arguments, on peut toujours écrire :
- -->
-
-	@interface SomeClass
-
-	- method: arg;
-
-	@end
-	
-	@implementation SomeClass
-
-	- method: arg
-	{
-		//
-	    return someObject;
-	}
-
-	@end
-	
-<!--
- On utilise aussi beaucoup plus id qu'aujourd'hui : maintenant, on préfère déclarer un spécifier la classe du pointeur.
- -->
-
----
-#### “Cocoa”
-
-<!--
- Les concepts fondamentaux de Cocoa existent déjà. On retrouve ces concepts aujourd'hui encore dans le design de UIKit.
- -->
-
-* Interface Builder et AppKit
-	* (Xcode s’appelle Project Builder)
-* IBOutlets and IBActions
-* Target-Action
-* Responder Chain
-
----
-#### NeXTSTEP 4.0, 1994
-
-* Préfixe `NS`
-
-<!--
- Le préfixe des classes Next, "NX", devient NS à la création de Foundation. 
-
- NXApp est renommé NSApp, par exemple.
- Surtout, `NSObject` remplace `Object`
-
- -> C'est le split principal entre avec GnuStep, qui continue d'utiliser Object et implémentera petit à petit les méthodes de Foundation.
- -->
-
-* Gestion “Semi-Automatique” de la mémoire
-<!--
- La gestion semi-automatique de la mémoire apparait en 1994
- -->
-
-
-    - (id) retain;
-    - (void) release;
-    - (id) autorelease;
-
---
-	
-* Sur GnuStep, les `Object`s ont une méthode `free`, comme en c++.
-
----
-#### Foundation
-
-<!--
- Foundation apporte aussi un lot de méthodes pour faciliter la manipulation bas niveau, et le forward d'invocation
- -->
-
-* NSSelectorFromString, NSClassFromString, etc.
-* NSInvocation
-* NSProxy 
-
-<!-- 
- Le forward est plus ou moins vu comme un palliatif à l'absence d'héritage multiple. En tout les cas, c'est un mécanisme de POO qui est permit par des objets NS.
- -->
-
----
-#### Enterprise Objects Framework
-
-<!-- 
- Le principal produit de NeXT après l’échec des machines comme le cube, un framework objet orienté Entreprises.
- 
- Il va introduire des concepts très importants pour la suite
- -->
-
-* Key-Value Coding via le protocole `EOFKeyValueCoding`
-
-
-	- (void) valueForKey:(NSString*)key;
-	- (void) setValue:(id)value forKey:(NSString*)key;
-	
-<!-- 
- Strictement, ce n'est pas une partie du langage, même s'il utilise les accès bas-niveau du Runtime.
- A l’époque, la question ne se pose d’ailleurs pas, ce sont des méthodes de EOF, pas du langage.
- -->
-
-* WebObjects
-
-<!--
- Le serveur d'entreprise d’Apple, et surtout
- -->
-
-* Renaîtra sur Mac en tant que **CoreData**.
-
-<!--
- Qui apparaitra plus tard, mais qui reprend exactement la même idée.
- -->	
-
----
-layout:false
-class: center, middle
-# Apple
-
----
-layout: true
-## Apple
-
----
-
-Rachat de NeXT en 1997.
-
---
-
-*“Cocoa is [now] owned by Apple, and the indications are that Apple is going to either completely drop its support for ObjC in favor of Java, or at least de-emphasize its use to the point where nobody would want to even look at it (in fact, this "death by default" has already happened).”*
-
-comp.sys.next.programmer, Avril 2000.
-
-<!--
- Apple a effectivement d'autres plans pour Mac OS X. (ou plutôt des alternatives).
- -->
-
---
-Apple a plusieurs plans :
-
-* Carbon et CoreFoundation
-
---
-
-* JavaCocoa
-
-<!--
- JavaCocoa n'est pas un bridge pour faire de l'ObjC ou manipuler le runtime en Java, mais un bridge Cocoa pour Java, qui permet d'utiliser AppKit en Java.
- A l'époque, Apple vante Mac OS X comme "le premier système compatible Java".
- 
- (En tout cas pour le développement d'applications desktop)
- 
- Il faut admettre qu'en 2000, Java est considéré comme le future de l'informatique.
- 
- Peu d’applis sont réellement développées avec JavaCocoa. Cyberduck.
- -->
-
----
-#### Toll-Free Bridging (Mac OS X 10.0)
-
-<!--
- Compatibilité avec CoreFoundation pour simplifier l'adoption de Mac OS X
- -->
-
-	NSString * <=> CFStringRef
-
---
-
-<!--
- Pas strictement un ajout à objc, mais implémenté avec un hack dans le language
- -->
-
-`objc_getfutureclass`&nbsp;: Used by CoreFoundation's toll-free bridging. Do not call this function yourself.
-
----
-#### Exceptions Modernes (Mac OS X 10.3)
-
-<!--
- Le vieux mécanisme d'exception utilise setjmp/longjmp, c'est à dire un saut (brutal) sur la stack.
- (Implémenté avec des macros)
- -->
-
-	NS_DURING
-		[[NSException exception] raise];
-	NS_HANDLER
-	   // handle it
-	NS_ENDHANDLER
-
---
-
-<!--
- Le nouveau mécanisme est le même que C++ (et il est compatible avec lui), permet par exemple de récupérer la stack.
- -->
-
-	@try
-		@throw exception
-	@catch
-		// handle it
-	@finally
-
----
-#### Key-Value Observing et Bindings (Mac OS X 10.3)
-
-<!--
- Basé sur les conventions du KVC, permet d'être notifié d'un changement de valeur d'un objet.
- -->
-
-	[object addObserver:self forKeyPath:@"someKey" options:0 context:NULL];
-<!--
- Apporte aussi nombre de conventions de nommage, il s'agit des prémices des @properties
- -->
-
---
-<!--
- Implémenté avec un hack lui aussi, qui insère une classe dans la hiérarchie au moment ou on commence à observer un objet.
- -->
-
-`objc_duplicateclass`&nbsp;: Used by Foundation's Key-Value Observing. Do not call this function yourself.
-
-
----
-## CoreData (Mac OS X 10.4)
-
-<!--
- switch (back) to Intel pendant Tiger, mais a priori ce n'est pas ce qui pose de problème à ObjC.
- -->
-
-<!--
- Héritier de EOF. Va prendre bcp d'importance pour le dév applicatif, mais au niveau du langage, apporte :
- -->
-
-#### Key-Value Coding sur les Collections
-
-	[array valueForKey:@"someValue"]
-
-<!--
- Retourne un array en appelant valueForKey: sur chaque objet de la collection
- -->
-
---
-
-#### Opérateurs KVC sur les Collections
-
-<!--
- Programmation de plus haut niveau, metaprog
- -->
-
-	[persons valueForKeyPath:@"@avg.age"];
-	[array valueForKey:@"someValue"]
-	
-
----
-layout: false
-class: center, middle
-
-# Mac OS X 10.5
-# Objective-C 2.0
-
----
-layout:true
-## Objective-C 2.0
-
----
-#### Garbage Collector
-
-D’après Apple, “State of the art”.
-
-<!--
- Apple en est très fière. Cependant, il faut compiler en double, on ne peut linker qu'avec des frameworks compatibles avec le GC.
- 
- Même s'il finira par être abandonné, il aide à clarifier les notions de gestion de mémoire, de graphe d'objets.
- (de responsabilité et d'appartenance). On commence à parler de pointeurs strong et weak.
- -->
-
----
-#### Notation pointée
-
-<!--
- La notation pointée est compatible avec les properties, mais avec tout ce qui respecte le nommage KVC.
- -->
-
-	[obj setFoo:value]
-
-devient
-
-	obj.foo = value;
-
---
 &nbsp;
 
-#### Properties
-
-	- (Foo*) foo;
-	- (void) setFoo:(Foo*)foo;
+	[@[@0, @5, @5, @5, @5] valueForKeyPath:@"@standardDeviation.self"]
+		// -> @2
 	
-devient
-
-	@property Foo* foo;
-
-<!--
- On devrait dire properties "explicites"
- On ajoute une nouvelle syntaxe pour des taches existantes.
- Ne fait pas l'unanimité chez les vétérans, parce qu'on a l'impression de manipuler des structs C.
- -->
+<!-- Retourne un NSNumber -->
 
 ---
-#### Fast Enumeration
 
-<!--
- Si vous n'avez pas fait d'objc avant 10.5, vous n'avez pas idée de ce que c'était.
- Autant la notation pointée est accueille avec certaines réserves, autant tout le monde accueille ça avec soulagement.
- Ce n'est pas simplement plus court à écrire, c'est aussi plus rapide.
- Implémenté par des méthodes que doivent implémenter la collection
- -->
-
---
+`@differential`
 	
-	NSEnumerator * e
+	- (NSArray*) _differentialForKeyPath:(NSString*)keyPath
+
+&nbsp;
 	
-    NSEnumerator * enumerator = [array objectEnumerator];
-    NSObject * object = nil;
-	
-    while ( (object = [enumerator nextObject]) != nil )
-	{
-        ...
-    }
-	
---
+	[@[@0, @1, @3, @0] valueForKeyPath:@"@differential.self"]
+		// -> @[@1, @2, @(-3)]
 
-	for( NSObject* object in array)
-	{
-		...
-	}
-
----
-#### “Modern runtime”
-
-Uniquement sur Mac 64-bit et sur iOS.
-
-**Non-fragile ABI**
-
-<!--
- ajout d'ivar au runtime
- Object != struct
- Une nouvelle version d'une classe parente ne casse pas les classes filles.
- NSZones are deprecated.
- -->
-
-@defs et sizeof(NSArray) n’ont plus de sens.
-
----
-#### Bonus
-
-* JavaCocoa deprecated.
-<!--
- At last !
- -->
-
---
-
-* Bridges du runtime avec d’autres languages : rubyCocoa, python (pyObjC), AppleScript…
-<!--
- N'utilisent pas la syntaxe d'objc, mais utilisent directement le runtime pour utiliser des méthodes Cocoa ou ObjC.
- -->
-
---
-
-* `@optional` methods in Protocols.
-
-<!--
- L'ancienne notion de "protocol informel", implémenté avec une catégorie sur NSObject, disparait.
- -->
-
---
-
-* Class Extentions (“catégorie anonyme”)
-
-
-	// SomeClass.m
-	@interface SomeClass(PrivateMethods)
-	...
-	@end
-	
-	// devient
-
-	// SomeClass.m
-	@interface Class()
-	...
-	@end
-	
-<!--
- Le principal est que le compilateur sait qu'une méthode privée manque de l'implémentation.
- Ici aussi, on ajoute une nouvelle syntaxe pour un usage courant.
- -->
-
----
-layout:false
-class: center,middle
-
-# Clang
-
-<!-- 
- Le compilateur C issu du projet LLVM. Apple se joint au projet existant pour remplacer GCC, et depuis, drive le développement de LLVM de facto.
- 
- La grosse évolution suivante est le changement de compilateur, qui va permettre à Apple d'ajouter toutes les features à son rythme, sans dépendre de gcc.
- -->
+<!-- Retourne un array avec un item de moins -->
 
 ---
 layout:true
-## Clang
-
-<!--
- On voit les premiers avantages de Clang avant de pouvoir remplacer GCC complètement.
- -->
+# (distinct)UnionOfObjects
 
 ---
-#### Clang Static Analyzer (Xcode 3)
-
-Détection automatique de leaks et de bugs, basée sur les conventions du language.
-
-<!--
- Détecte les leaks à la compilation en se basant sur les conventions du language.
- -->
-
----
-#### Blocks (“Objective-C 2.1”)
-
-Ajout à `C`, mais les blocks sont utilisables comme des objets Objective-C.
 
 --
 
-	__block BOOL found = NO;
-	NSSet *aSet = [NSSet setWithObjects: @"Alpha", @"Beta", @"Gamma", @"X", nil];
-	NSString *string = @"gamma";
- 
-	[aSet enumerateObjectsUsingBlock:^(id obj, BOOL *stop) {
-	    if ([obj localizedCaseInsensitiveCompare:string] == NSOrderedSame) {
-	        *stop = YES;
-	        found = YES;
+`@unionOfObjects` ne sert à rien !
+
+	id pencils = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"blue"},
+	               @{@"color": @"green"}];
+
+	[pencils valueForKeyPath:@"@unionOfObjects.color"]
+		// -> @[@"blue", @"red", @"blue", @"green"]
+
+---
+
+`@distinctUnionOfObjects` élimine les doublons :
+
+	id pencils = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"blue"},
+	               @{@"color": @"green"}];
+
+	[pencils valueForKeyPath:@"@distinctUnionOfObjects.color"]
+		// -> @[@"blue", @"red", @"green"]
+	
+---
+layout:true
+# (distinct)UnionOfArrays/Sets
+
+Utilisent une **collection de collections**.
+
+
+---
+
+--
+
+`@unionOfArrays` :
+
+	id pencils = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"blue"}];
+	id markers = @[@{@"color": @"purple"},
+	               @{@"color": @"blue"},
+	               @{@"color": @"green"}];
+				   
+	@[pencils, markers] valueForKeyPath:@"@unionOfArrays.color"]
+		// ->  @[@"blue", @"red", @"blue", @"purple", @"blue", @"green"]
+
+---
+
+`@distinctUnionOfArrays` élimine les doublons :
+
+	id pencils = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"blue"}];
+	id markers = @[@{@"color": @"purple"},
+	               @{@"color": @"blue"},
+	               @{@"color": @"green"}];
+				   
+	@[pencils, markers] valueForKeyPath:@"@unionOfArrays.color"]
+		// ->  @[@"green", @"red", @"blue", @"purple"]
+		
+<!-- Et au passage, on perd l'ordre. @distinctUnionOfSets fonctionne de la même façon, et NSOrderedSet ne supporte pas ces opérateurs. -->
+
+---
+layout:true
+# Le cas des valeurs nulles
+
+---
+
+--
+
+> ***Important:*** *This operator raises an exception if any of the leaf objects is nil*
+
+--
+
+> *"This class is not key value coding-compliant for the key "key"*
+
+--
+
+	id objects = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"green"},
+	               @"notacolor"];
+				   
+	[objects valueForKeyPath:@"@unionOfObjects.color"];
+	// NSUnknownKeyException : "This class is not key value coding-compliant for the key color"
+
+---
+**`@unionOfPresentObjects`**
+
+Similaire à @unionOfObjects, mais ignore 
+
+* les objets incompatibles,
+* les valeurs nil,
+* les NSNull.
+
+--
+
+
+	- (id) _unionOfPresentObjectsForKeyPath:(NSString*)keyPath
+	{
+	    NSMutableArray * values = [NSMutableArray new];
+	    for (id obj in self) {
+	        @try {
+	            id value = [obj valueForKeyPath:keyPath];
+	            if(value && value!=[NSNull null])
+	                [values addObject:value];
+	        }
+	        @catch (NSException *exception) {
+	        }
 	    }
-	}];
- 
-	// At this point, found == YES
-
-<!--
- Ajout à C, autant qu’à ObjC. On peut utiliser les blocks sans objective-C, mais la structure interne des blocks est compatible avec les objets ObjC (on peut par exemple les mettre dans un NSArray.)
- 
- Gros, gros changement de paradigme. Remplace dans certaines API les delegates, les selecteurs, etc.
- Concept similaire aux NSInvocations, dans l'absolu.
- 
- D'un autre côté, la syntaxe n'est pas géniale, et le flag de termination dans l'exemple est franchement inélégant.
- -->
-
----
-layout:true
-## LLVM Compiler 3.0
+	    return [NSArray arrayWithArray:values];
+	}
 
 ---
 
-#### Private Instance Variables
+@unionOfPresentObjects
 
-<!--
- Sucre syntaxique qui ne fait au font qu'utiliser les fonctionnalités du runtime moderne
- * no forward declaration of methods needed anymore (LLVM Compiler 3.1)
- -->
-
-	// SomeClass.h
-	@interface SomeClass : NSObject
-	{
-		int foo;
-		id bar;
-	}
-	...
-	@end
-
-devient
-
-	// SomeClass.m
-	@interface SomeClass ()
-	{
-		int foo;
-		id bar;
-	}
-	...
-	@end
-
-
----
-
-#### Private Instance Variables
-
-<!--
- Sucre syntaxique qui ne fait au font qu'utiliser les fonctionnalités du runtime moderne
- -->
-
-	// SomeClass.h
-	@interface SomeClass : NSObject
-	{
-		int foo;
-		id bar;
-	}
-	...
-	@end
-
-ou même
-
-	@implementation SomeClass
-	{
-		int foo;
-		id bar;
-	}
-	...
-	@end
-
-
----
-#### ARC
-<!--
- Même si elle n'a pas (encore) de features privées, Apple utilise son propre fork de clang, et n'utilise pas la même numérotation de versions.
- -->
-
---
-<!--
- Le but va être de remplacer le GC
- -->
-
-* Garbage Collector deprecated
-
---
-
-* `retain` et `release` sont intégrés au language.
-
-<!--
- Jusque là, c'était encore un mécanisme fait par Foundation, indépendant du runtime ou du compilateur.
- Retain et Release deviennent partie du language, on n'a plus le droit de les réimplémenter ou de les appeler manuellement.
- Glissement sémantique : les attributs assign/retain des properties deviennent weak/strong.
- -->
-
---
-
-* `objc_method_family`
-
-<!--
- Certaines méthodes sont automatiquement reconnues comme ayant une sémantique particulière, par exemple les méthodes alloc et new qui créent un objet avec un retain count à 1. 
- La famille de méthode peut-être définie automatiquement, en respectant les conventions que clang connait, ou en précisant un attribut à la main
- -->
-
---
-
-* `weak` pointers mis à nil automatiquement
-
-<!--
- Automatiquement mis à nil quand l'objet pointé est détruit. (à partir de iOS 5 et 10.8)
- -->
+	id objects = @[@{@"color": @"blue"},
+	               @{@"color": @"red"},
+	               @{@"color": @"green"},
+	               @"notacolor"];
+	
+	[objects valueForKeyPath:@"@unionOfPresentObjects.color"]
+		// -> @[@"blue",@"red",@"green"]
 
 
 ---
 layout:true
-## LLVM Compiler 4.0
+# Paramètres spécifiques
 
 ---
 
-#### `@synthesis` automatique des ivars des properties
-<!--
- Sauf pour NSManagedObject. En fait, clang l'avait intégré pour Xcode 4.0b, et était revenu au design parce que la première version gérait mal certains cas.
- -->
+La partie de droite du keyPath peut servir à autre chose : 
 
----
+--
 
-#### Boxing
+**`@convertDistanceFromTo`**
+
+	[arrayOfMiles valueForKeyPath:@"@convertDistanceFromTo.miles.KM"]
+
+--
+
+**`@filterWithRegexp`**
+
+	[arrayOfMiles valueForKeyPath:@"@filterWithRegexp.[Mm]ozilla"]
 	
-	[NSNumber numberWithDouble:M_PI/2.0]
 	
-devient
-	
-	@(M_PI/2.0)
-
----
-
-#### Container literals
-
-pour `NSArray` et `NSDictionary
-
-	[NSArray arrayWithObject:obj1, obj2, obj3, nil];
-	
-devient
-	
-	@[obj1, obj2, obj3]
-
----
-
-#### Subscripting
-
-	[dictionary objectForKey:@"key"];
-	
-devient
-
-	dictionary[@"key"]
-
-<!--
- Pas forcément super clair qu'il ne s'agit pas d'un array C. 
- Implémentation appelle en réalité de nouvelles méthodes (indexedObjectForKey), qui doivent être définies sur le container.
- On peut les ajouter à ses propres classe si on veut et les rendres compatibles avec le subscripting. C'est presque de l'overload d'opérateur à la c++.
- -->
-
----
-#### Bonus
-
-* Mot clé `instancetype`
-
-<!--
- Implémenté avec les objc_method_family 
--->
-
-	@interface A
-	+ (instancetype)constructAnA;
-	@end
-
---
-
-<!--
- Permet au compilateur de savoir que [NSMutableArray new] renvoie un NSMutableArray, pas un NSArray, ni un id
- -->
-
-	[[NSMutableArray new] addObject:someObject];
-
-
---
-
-* Function Overloading in C
-
-	float __attribute__((overloadable)) tgsin(float x) { return sinf(x); }
-	double __attribute__((overloadable)) tgsin(double x) { return sin(x); }
-	
---
-
-* CoreFoundation “compatible” avec ARC : `arc_cf_code_audited`.
-
-<!--
- Simplifie le bridge, et permet d'utiliser les conventions de nommage de CF avec ARC.
- -->
-
----
-layout: true
-# Futur ?
-
----
-
-<!--
- Ma wishlist, en quelque sorte.
- -->
-
-* Appel à "`super`" automatique, sans respécifier les arguments. (par exemple pour viewDidAppear:)
-
---
-
-* `-[NSString stringWithFormat:]` plus court
-
---
-
-* Boxing pour NSValue
-	<br>
-	<br>
-	`[NSValue valueWithCGPoint:CGPointMake(10,20)];` 
-	<br>
-	<br>
-	`@( CGPointMake(10,20) )`
-	
-<!--
- En réalité, il y a déjà un système de wrapping pour les structs, avec le KVC : 
- "The default implementations of valueForKey: and setValue:forKey: provide support for automatic object wrapping of the non-object data types, both scalars and structs." 
- -->
-
---
-
-* Namespaces
-
---
-
-* Attribut de méthode pour le *designated initializer*
-<!--
- Il n'y a aujourd'hui rien qui vérifie que les règles d'appel du DI sont respectées par ses subclasses.
- -->
-
---
-
-* Méthodes protected et marquées pour réimplémentation
-
-<!--
- ça doit faire 20 ans qu'on le demande pour les protected
- Certaines API déclarent certaines méthode uniquement pour être réimplémentées, par ex -drawRect:. 
- Ça ne sert à rien qu'elle soit déclarée comme le reste de l'API de UIView.
- -->
-
---
-
-* Valeurs de paramètres par défaut 
-<!--
- Ce style d'API est super commun, et à chaque fois, c'est la doc qui précise quelle est la valeur des arguments ignorées.
- Ça serait mieux dans le language.
- -->
-
-	- (void) doSomething;
-	- (void) doSomethingWithStuff:(Stuff*)s;
-
 
 ---
 layout:false
-# Links
+# Liens
 
-* [comp.sys.next.programmer](https://groups.google.com/forum/?fromgroups=#!topic/comp.sys.next.programmer/NUXThBOc360)
-* [Objective-C Feature Availability Index](http://developer.apple.com/library/ios/#releasenotes/ObjectiveC/ObjCAvailabilityIndex/_index.html)
-<br>
-<br>
-* [The OPENSTEP Development Environment](http://objc.toodarkpark.net/introobj.html#712)
-* [MacTECH : C++ Versus Objective-C](http://www.mactech.com/articles/mactech/Vol.13/13.03/CandObjectiveCCompared/index.html)
-* [GnuStep ObjectiveC Book](http://www.gnustep.org/resources/documentation/ObjectivCBook.pdf)
-* [History of Cocoa and Objective-C](http://www.cocoacast.com/cocoacast/?q=node/14)
-* [Objective-C Runtime Reference](http://developer.apple.com/library/ios/ipad/#documentation/Cocoa/Reference/ObjCRuntimeRef/Reference/reference.html)
-* [Clang Language Extensions](http://clang.llvm.org/docs/LanguageExtensions.html#objc_features)
-
+* [Apple docs](http://developer.apple.com/library/ios/#documentation/cocoa/conceptual/KeyValueCoding/Articles/CollectionOperators.html)
+* [NSHipster](http://nshipster.com/kvc-collection-operators/)
 
 </textarea><div id="slideshow"></div></body></html>

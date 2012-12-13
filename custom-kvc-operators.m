@@ -54,6 +54,25 @@
 
 @end
 
+@implementation NSArray (UnionOfPresentObjects)
+
+- (id) _unionOfPresentObjectsForKeyPath:(NSString*)keyPath
+{
+    NSMutableArray * values = [NSMutableArray new];
+    for (id obj in self) {
+        @try {
+            id value = [obj valueForKeyPath:keyPath];
+            if(value && value!=[NSNull null])
+                [values addObject:value];
+        }
+        @catch (NSException *exception) {
+        }
+    }
+    return [NSArray arrayWithArray:values];
+}
+
+@end
+
 #pragma mark -
 
 @implementation NSArray (CustomKVCOperators)
@@ -127,6 +146,21 @@ int main ()
         
         // [positions valueForKeyPath:@"@self"]
         // [positions valueForKeyPath:@"self"]
+//        id pencils = @[@{@"color": @"blue"},
+//                       @{@"color": @"red"},
+//                       @{@"color": @"blue"},
+//                       @{@"notacolor": @"white"}];
+//        id markers = @[@{@"color": @"purple"},
+//                       @{@"color": @"blue"},
+//                       @{@"color": @"green"}];
+//        NSLog(@"%@",[@[pencils, markers] valueForKeyPath:@"@distinctUnionOfArrays.color"]);
+
+        id objects = @[@{@"color": @"blue"},
+                       @{@"color": @"red"},
+                       @{@"color": @"green"},
+                       @"notacolor"];
+        NSLog(@"%@",[objects valueForKeyPath:@"@unionOfPresentObjects.[Mm]ozilla"]);
+        return 1;
 
         // Custom Simple Operator, operating on objects of a collections (simplest case)
         NSLog(@"(custom selector) opposite = %@",[positions valueForKeyPath:@"opposite"]);
